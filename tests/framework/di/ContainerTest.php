@@ -20,6 +20,7 @@ use yiiunit\framework\di\stubs\Foo;
 use yiiunit\framework\di\stubs\FooProperty;
 use yiiunit\framework\di\stubs\Qux;
 use yiiunit\framework\di\stubs\QuxInterface;
+use yiiunit\framework\di\stubs\QuxFactory;
 use yiiunit\TestCase;
 
 /**
@@ -260,6 +261,7 @@ class ContainerTest extends TestCase
             'qux.using.closure' => function () {
                 return new Qux();
             },
+            'rollbar', 'baibaratsky\yii\rollbar\Rollbar'
         ]);
         $container->setDefinitions([]);
 
@@ -271,6 +273,135 @@ class ContainerTest extends TestCase
         $this->assertEquals('item1', $traversable->current());
 
         $this->assertInstanceOf('yiiunit\framework\di\stubs\Qux', $container->get('qux.using.closure'));
+
+        try {
+            $container->get('rollbar');
+            $this->fail('InvalidConfigException was not thrown');
+        } catch(\Exception $e)
+        {
+            $this->assertInstanceOf('yii\base\InvalidConfigException', $e);
+        }
+    }
+
+    public function testStaticCall()
+    {
+        $container = new Container();
+        $container->setDefinitions([
+            'qux' => [QuxFactory::className(), 'create'],
+        ]);
+
+        $qux = $container->get('qux');
+        $this->assertInstanceOf(Qux::className(), $qux);
+        $this->assertSame(42, $qux->a);
+    }
+
+    public function testObject()
+    {
+        $container = new Container();
+        $container->setDefinitions([
+            'qux' => new Qux(42),
+        ]);
+
+        $qux = $container->get('qux');
+        $this->assertInstanceOf(Qux::className(), $qux);
+        $this->assertSame(42, $qux->a);
+    }
+
+    public function testDi3Compatibility()
+    {
+        $container = new Container();
+        $container->setDefinitions([
+            'test\TraversableInterface' => [
+                '__class' => 'yiiunit\data\base\TraversableObject',
+                '__construct()' => [['item1', 'item2']],
+            ],
+            'qux' => [
+                '__class' => Qux::className(),
+                'a' => 42,
+            ],
+        ]);
+
+        $qux = $container->get('qux');
+        $this->assertInstanceOf(Qux::className(), $qux);
+        $this->assertSame(42, $qux->a);
+
+        $traversable = $container->get('test\TraversableInterface');
+        $this->assertInstanceOf('yiiunit\data\base\TraversableObject', $traversable);
+        $this->assertEquals('item1', $traversable->current());
+    }
+
+    public function testInstanceOf()
+    {
+        $container = new Container();
+        $container->setDefinitions([
+            'qux' => [
+                'class' => Qux::className(),
+                'a' => 42,
+            ],
+            'bar' => [
+                '__class' => Bar::className(),
+                '__construct()' => [
+                    Instance::of('qux')
+                ],
+            ],
+        ]);
+        $bar = $container->get('bar');
+        $this->assertInstanceOf(Bar::className(), $bar);
+        $qux = $bar->qux;
+        $this->assertInstanceOf(Qux::className(), $qux);
+        $this->assertSame(42, $qux->a);
+    }
+
+    public function testGetByInstance()
+    {
+        $container = new Container();
+        $container->setSingletons([
+            'one' => Qux::className(),
+            'two' => Instance::of('one'),
+        ]);
+        $one = $container->get(Instance::of('one'));
+        $two = $container->get(Instance::of('two'));
+        $this->assertInstanceOf(Qux::className(), $one);
+        $this->assertSame($one, $two);
+        $this->assertSame($one, $container->get('one'));
+        $this->assertSame($one, $container->get('two'));
+    }
+
+    public function testWithoutDefinition()
+    {
+        $container = new Container();
+
+        $one = $container->get(Qux::className());
+        $two = $container->get(Qux::className());
+        $this->assertInstanceOf(Qux::className(), $one);
+        $this->assertInstanceOf(Qux::className(), $two);
+        $this->assertSame(1, $one->a);
+        $this->assertSame(1, $two->a);
+        $this->assertNotSame($one, $two);
+    }
+
+    public function testGetByClassIndirectly()
+    {
+        $container = new Container();
+        $container->setSingletons([
+            'qux' => Qux::className(),
+            Qux::className() => [
+                'a' => 42,
+            ],
+        ]);
+
+        $qux = $container->get('qux');
+        $this->assertInstanceOf(Qux::className(), $qux);
+        $this->assertSame(42, $qux->a);
+    }
+
+    /**
+     * @expectedException \yii\base\InvalidConfigException
+     */
+    public function testThrowingNotFoundException()
+    {
+        $container = new Container();
+        $container->get('non_existing');
     }
 
     public function testContainerSingletons()

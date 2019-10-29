@@ -12,6 +12,7 @@ use yii\db\Expression;
 use yii\db\JsonExpression;
 use yii\db\Query;
 use yii\db\Schema;
+use yii\helpers\Json;
 
 /**
  * @group db
@@ -63,6 +64,11 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
                 $this->primaryKey()->comment('test')->after('col_before'),
                 "int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'test' AFTER `col_before`",
             ],
+            [
+                Schema::TYPE_PK . " COMMENT 'testing \'quote\'' AFTER `col_before`",
+                $this->primaryKey()->comment('testing \'quote\'')->after('col_before'),
+                "int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'testing \'quote\'' AFTER `col_before`",
+            ],
         ];
 
         /*
@@ -79,7 +85,83 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
             ];
         }
 
-        return array_merge(parent::columnTypes(), $columns);
+        return array_merge(parent::columnTypes(), $this->columnTimeTypes(), $columns);
+    }
+
+    public function columnTimeTypes()
+    {
+        $columns = [
+            [
+                Schema::TYPE_DATETIME . ' NOT NULL',
+                $this->dateTime()->notNull(),
+                'datetime NOT NULL',
+            ],
+            [
+                Schema::TYPE_DATETIME,
+                $this->dateTime(),
+                'datetime',
+            ],
+            [
+                Schema::TYPE_TIME . ' NOT NULL',
+                $this->time()->notNull(),
+                'time NOT NULL',
+            ],
+            [
+                Schema::TYPE_TIME,
+                $this->time(),
+                'time',
+            ],
+            [
+                Schema::TYPE_TIMESTAMP . ' NOT NULL',
+                $this->timestamp()->notNull(),
+                'timestamp NOT NULL',
+            ],
+            [
+                Schema::TYPE_TIMESTAMP . ' NULL DEFAULT NULL',
+                $this->timestamp()->defaultValue(null),
+                'timestamp NULL DEFAULT NULL',
+            ],
+        ];
+
+        /**
+         * @link https://github.com/yiisoft/yii2/issues/14367
+         */
+        $mysqlVersion = $this->getDb()->getSlavePdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
+        $supportsFractionalSeconds = version_compare($mysqlVersion,'5.6.4', '>=');
+        if ($supportsFractionalSeconds) {
+            $expectedValues = [
+                'datetime(0) NOT NULL',
+                'datetime(0)',
+                'time(0) NOT NULL',
+                'time(0)',
+                'timestamp(0) NOT NULL',
+                'timestamp(0) NULL DEFAULT NULL',
+            ];
+
+            foreach ($expectedValues as $index => $expected) {
+                $columns[$index][2] = $expected;
+            }
+        }
+
+        /**
+         * @link https://github.com/yiisoft/yii2/issues/14834
+         */
+        $sqlModes = $this->getConnection(false)->createCommand('SELECT @@sql_mode')->queryScalar();
+        $sqlModes = explode(',', $sqlModes);
+        if (in_array('NO_ZERO_DATE', $sqlModes, true)) {
+            $this->markTestIncomplete(
+                "MySQL doesn't allow the 'TIMESTAMP' column definition when the NO_ZERO_DATE mode enabled. " .
+                "This definition test was skipped."
+            );
+        } else {
+            $columns[] = [
+                Schema::TYPE_TIMESTAMP,
+                $this->timestamp(),
+                $supportsFractionalSeconds ? 'timestamp(0)' : 'timestamp',
+            ];
+        }
+
+        return $columns;
     }
 
     public function primaryKeysProvider()
@@ -174,6 +256,9 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
             'query, values and expressions without update part' => [
                 3 => 'INSERT INTO {{%T_upsert}} (`email`, [[time]]) SELECT :phEmail AS `email`, now() AS [[time]] ON DUPLICATE KEY UPDATE `ts`=:qp1, [[orders]]=T_upsert.orders + 1',
             ],
+            'no columns to update' => [
+                3 => 'INSERT INTO `T_upsert_1` (`a`) VALUES (:qp0) ON DUPLICATE KEY UPDATE `a`=`T_upsert_1`.`a`',
+            ],
         ];
         $newData = parent::upsertProvider();
         foreach ($concreteData as $testName => $data) {
@@ -186,21 +271,38 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
     {
         return array_merge(parent::conditionProvider(), [
             // json conditions
-            [['=', 'jsoncol', new JsonExpression(['lang' => 'uk', 'country' => 'UA'])], '[[jsoncol]] = :qp0', [':qp0' => '{"lang":"uk","country":"UA"}']],
-            [['=', 'jsoncol', new JsonExpression([false])], '[[jsoncol]] = :qp0', [':qp0' => '[false]']],
+            [
+                ['=', 'jsoncol', new JsonExpression(['lang' => 'uk', 'country' => 'UA'])],
+                '[[jsoncol]] = CAST(:qp0 AS JSON)', [':qp0' => '{"lang":"uk","country":"UA"}'],
+            ],
+            [
+                ['=', 'jsoncol', new JsonExpression([false])],
+                '[[jsoncol]] = CAST(:qp0 AS JSON)', [':qp0' => '[false]']
+            ],
             'object with type. Type is ignored for MySQL' => [
                 ['=', 'prices', new JsonExpression(['seeds' => 15, 'apples' => 25], 'jsonb')],
-                '[[prices]] = :qp0', [':qp0' => '{"seeds":15,"apples":25}']
+                '[[prices]] = CAST(:qp0 AS JSON)', [':qp0' => '{"seeds":15,"apples":25}'],
             ],
             'nested json' => [
                 ['=', 'data', new JsonExpression(['user' => ['login' => 'silverfire', 'password' => 'c4ny0ur34d17?'], 'props' => ['mood' => 'good']])],
-                '[[data]] = :qp0', [':qp0' => '{"user":{"login":"silverfire","password":"c4ny0ur34d17?"},"props":{"mood":"good"}}']
+                '[[data]] = CAST(:qp0 AS JSON)', [':qp0' => '{"user":{"login":"silverfire","password":"c4ny0ur34d17?"},"props":{"mood":"good"}}']
             ],
-            'null value' => [['=', 'jsoncol', new JsonExpression(null)], '[[jsoncol]] = :qp0', [':qp0' => 'null']],
-            'null as array value' => [['=', 'jsoncol', new JsonExpression([null])], '[[jsoncol]] = :qp0', [':qp0' => '[null]']],
-            'null as object value' => [['=', 'jsoncol', new JsonExpression(['nil' => null])], '[[jsoncol[[ = :qp0', [':qp0' => '{"nil":null}']],
-
-            [['=', 'jsoncol', new JsonExpression(new DynamicModel(['a' => 1, 'b' => 2]))], '[[jsoncol]] = :qp0', [':qp0' => '{"a":1,"b":2}']],
+            'null value' => [
+                ['=', 'jsoncol', new JsonExpression(null)],
+                '[[jsoncol]] = CAST(:qp0 AS JSON)', [':qp0' => 'null']
+            ],
+            'null as array value' => [
+                ['=', 'jsoncol', new JsonExpression([null])],
+                '[[jsoncol]] = CAST(:qp0 AS JSON)', [':qp0' => '[null]']
+            ],
+            'null as object value' => [
+                ['=', 'jsoncol', new JsonExpression(['nil' => null])],
+                '[[jsoncol]] = CAST(:qp0 AS JSON)', [':qp0' => '{"nil":null}']
+            ],
+            'with object as value' => [
+                ['=', 'jsoncol', new JsonExpression(new DynamicModel(['a' => 1, 'b' => 2]))],
+                '[[jsoncol]] = CAST(:qp0 AS JSON)', [':qp0' => '{"a":1,"b":2}']
+            ],
             'query' => [
                 ['=', 'jsoncol', new JsonExpression((new Query())->select('params')->from('user')->where(['id' => 1]))],
                 '[[jsoncol]] = (SELECT [[params]] FROM [[user]] WHERE [[id]]=:qp0)', [':qp0' => 1]
@@ -208,6 +310,10 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
             'query with type, that is ignored in MySQL' => [
                 ['=', 'jsoncol', new JsonExpression((new Query())->select('params')->from('user')->where(['id' => 1]), 'jsonb')],
                 '[[jsoncol]] = (SELECT [[params]] FROM [[user]] WHERE [[id]]=:qp0)', [':qp0' => 1]
+            ],
+            'nested and combined json expression' => [
+                ['=', 'jsoncol', new JsonExpression(new JsonExpression(['a' => 1, 'b' => 2, 'd' => new JsonExpression(['e' => 3])]))],
+                "[[jsoncol]] = CAST(:qp0 AS JSON)", [':qp0' => '{"a":1,"b":2,"d":{"e":3}}']
             ],
             'search by property in JSON column (issue #15838)' => [
                 ['=', new Expression("(jsoncol->>'$.someKey')"), '42'],
@@ -228,7 +334,7 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
             [
                 'id' => 1,
             ],
-            $this->replaceQuotes('UPDATE [[profile]] SET [[description]]=:qp0 WHERE [[id]]=:qp1'),
+            $this->replaceQuotes('UPDATE [[profile]] SET [[description]]=CAST(:qp0 AS JSON) WHERE [[id]]=:qp1'),
             [
                 ':qp0' => '{"abc":"def","0":123,"1":null}',
                 ':qp1' => 1,
@@ -236,5 +342,29 @@ class QueryBuilderTest extends \yiiunit\framework\db\QueryBuilderTest
         ];
 
         return $items;
+    }
+
+    public function testIssue17449()
+    {
+        $db = $this->getConnection();
+        $pdo = $db->pdo;
+        $pdo->exec('DROP TABLE IF EXISTS `issue_17449`');
+
+        $tableQuery = <<<MySqlStatement
+CREATE TABLE `issue_17449` (
+  `test_column` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'some comment' CHECK (json_valid(`test_column`))
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+MySqlStatement;
+        $db->createCommand($tableQuery)->execute();
+
+        $actual = $db->createCommand()->addCommentOnColumn('issue_17449', 'test_column', 'Some comment')->rawSql;
+
+        $checkPos = stripos($actual, 'check');
+        if ($checkPos === false) {
+            $this->markTestSkipped("The used MySql-Server removed or moved the CHECK from the column line, so the original bug doesn't affect it");
+        }
+        $commentPos = stripos($actual, 'comment');
+        $this->assertNotFalse($commentPos);
+        $this->assertLessThan($checkPos, $commentPos);
     }
 }

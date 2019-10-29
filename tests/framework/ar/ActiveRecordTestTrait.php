@@ -275,16 +275,6 @@ trait ActiveRecordTestTrait
         $this->assertEquals('user1', $customer->name);
     }
 
-    public function testRefresh_querySetAlias_findRecord()
-    {
-        $customer = new \yiiunit\data\ar\CustomerWithAlias();
-        $customer->id = 1;
-
-        $customer->refresh();
-
-        $this->assertEquals(1, $customer->id);
-    }
-
     public function testEquals()
     {
         /* @var $customerClass \yii\db\ActiveRecordInterface */
@@ -1284,5 +1274,27 @@ trait ActiveRecordTestTrait
 
         $this->assertFalse($customer->canGetProperty('non_existing_property'));
         $this->assertFalse($customer->canSetProperty('non_existing_property'));
+    }
+
+    /**
+     * @see https://github.com/yiisoft/yii2/issues/17089
+     */
+    public function testViaWithCallable()
+    {
+        /* @var $orderClass \yii\db\ActiveRecordInterface */
+        $orderClass = $this->getOrderClass();
+
+        /* @var Order $order */
+        $order = $orderClass::findOne(2);
+
+        $expensiveItems = $order->expensiveItemsUsingViaWithCallable;
+        $cheapItems = $order->cheapItemsUsingViaWithCallable;
+
+        $this->assertCount(2, $expensiveItems);
+        $this->assertEquals(4, $expensiveItems[0]->id);
+        $this->assertEquals(5, $expensiveItems[1]->id);
+
+        $this->assertCount(1, $cheapItems);
+        $this->assertEquals(3, $cheapItems[0]->id);
     }
 }

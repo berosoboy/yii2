@@ -33,6 +33,10 @@ class DevController extends Controller
      */
     public $useHttp = false;
     /**
+     * @var bool whether to use --no-progress option when running composer
+     */
+    public $composerNoProgress = false;
+    /**
      * @var array
      */
     public $apps = [
@@ -160,7 +164,11 @@ class DevController extends Controller
             }
 
             $this->stdout("cloning application repo '$app' from '$repo'...\n", Console::BOLD);
-            passthru('git clone ' . escapeshellarg($repo) . ' ' . $appDir);
+            passthru('git clone ' . escapeshellarg($repo) . ' ' . $appDir, $returnVar);
+            if ($returnVar !== 0) {
+                $this->stdout("Error occurred while cloning repository.\n", Console::BOLD, Console::FG_RED);
+                return 1;
+            }
             $this->stdout("done.\n", Console::BOLD, Console::FG_GREEN);
         }
 
@@ -172,7 +180,11 @@ class DevController extends Controller
         // composer update
         $this->stdout("updating composer for app '$app'...\n", Console::BOLD);
         chdir($appDir);
-        passthru('composer update --prefer-dist');
+        $command = 'composer update --prefer-dist';
+        if ($this->composerNoProgress) {
+            $command .= ' --no-progress';
+        }
+        passthru($command);
         $this->stdout("done.\n", Console::BOLD, Console::FG_GREEN);
 
         // link directories
@@ -223,7 +235,11 @@ class DevController extends Controller
         // composer update
         $this->stdout("updating composer for extension '$extension'...\n", Console::BOLD);
         chdir($extensionDir);
-        passthru('composer update --prefer-dist');
+        $command = 'composer update --prefer-dist';
+        if ($this->composerNoProgress) {
+            $command .= ' --no-progress';
+        }
+        passthru($command);
         $this->stdout("done.\n", Console::BOLD, Console::FG_GREEN);
 
         // link directories
@@ -242,6 +258,7 @@ class DevController extends Controller
         $options = parent::options($actionID);
         if (\in_array($actionID, ['ext', 'app', 'all'], true)) {
             $options[] = 'useHttp';
+            $options[] = 'composerNoProgress';
         }
 
         return $options;

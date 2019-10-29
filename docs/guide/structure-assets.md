@@ -215,7 +215,7 @@ To achieve this, we should configure our composer a bit. There are two options t
 
 ___
 
-##### Using asset-packagist repository
+#### Using asset-packagist repository
 
 This way will satisfy requirements of the majority of projects, that need NPM or Bower packages.
 
@@ -248,7 +248,7 @@ $config = [
 
 Visit [asset-packagist.org](https://asset-packagist.org) to know, how it works.
 
-##### Using fxp/composer-asset-plugin
+#### Using fxp/composer-asset-plugin
 
 Compared to asset-packagist, composer-asset-plugin does not require any changes to application config. Instead, it
 requires global installation of a special Composer plugin by running the following command:
@@ -265,10 +265,12 @@ Add the following lines to `composer.json` of your project to adjust directories
 will be placed, if you want to publish them using Yii:
 
 ```json
-"extra": {
-    "asset-installer-paths": {
-        "npm-asset-library": "vendor/npm",
-        "bower-asset-library": "vendor/bower"
+"config": {
+    "fxp-asset": {
+        "installer-paths": {
+            "npm-asset-library": "vendor/npm",
+            "bower-asset-library": "vendor/bower"
+        }
     }
 }
 ```

@@ -13,7 +13,7 @@ events, it should extend from [[yii\base\Component]], or from a child class.
 Event Handlers <span id="event-handlers"></span>
 --------------
 
-An event handler is a [PHP callback](http://www.php.net/manual/en/language.types.callable.php) that gets executed
+An event handler is a [PHP callback](https://secure.php.net/manual/en/language.types.callable.php) that gets executed
 when the event it is attached to is triggered. You can use any of the following callbacks:
 
 - a global PHP function specified as a string (without parentheses), e.g., `'trim'`;
@@ -403,7 +403,7 @@ Event::on('*', '*', function ($event) {
 
 In order to detach event handler specified by wildcard pattern, you should repeat same pattern at
 [[yii\base\Component::off()]] or [[yii\base\Event::off()]] invocation. Keep in mind that passing wildcard
-during detaching of event handler will detach ony the handler specified for this wildcard, while handlers
+during detaching of event handler will detach only the handler specified for this wildcard, while handlers
 attached for regular event names will remain even if they match the pattern. For example:
 
 ```php
